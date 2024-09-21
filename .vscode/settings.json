@@ -23,5 +23,6 @@
       "tests"
     ],
     "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.pytestEnabled": true,
+    "Codegeex.CommitMessage.LanguagePreference": "English"
   }
