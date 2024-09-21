@@ -5,6 +5,7 @@
 </picture>
 
 --------------------------------------------------------------------------------
+[English](README.md)
 
 [![文档状态](https://img.shields.io/badge/documentation-go)](https://docs.ell.so/) [![安装指南](https://img.shields.io/badge/get_started-blue)](https://docs.ell.so/installation) [![Discord](https://dcbadge.limes.pink/api/server/vWntgU52Xb?style=flat)](https://discord.gg/vWntgU52Xb) [![X (formerly Twitter) Follow](https://img.shields.io/twitter/follow/wgussml)](https://x.com/wgussml)
 
