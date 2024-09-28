@@ -9,8 +9,10 @@ from ell.configurator import config
 import logging
 from functools import lru_cache
 import threading
-from ell.types.message import LMP
+from ell.types.message import LMP, ContentBlock, _content_to_text
 import requests
+
+from ell.util.plot_ascii import plot_ascii
 
 # Initialize colorama
 init(autoreset=True)
@@ -83,13 +85,37 @@ def get_terminal_width() -> int:
         logger.warning("Unable to determine terminal size. Defaulting to 80 columns.")
         return 80
 
-def wrap_text_with_prefix(text: str, width: int, prefix: str, subsequent_prefix: str, text_color: str) -> List[str]:
+def wrap_text_with_prefix(message, width: int, prefix: str, subsequent_prefix: str, text_color: str) -> List[str]:
     """Wrap text while preserving the prefix and color for each line."""
-    paragraphs = text.split('\n')
-    wrapped_paragraphs = [textwrap.wrap(p, width=width - len(prefix)) for p in paragraphs]
-    wrapped_lines = [line for paragraph in wrapped_paragraphs for line in paragraph]
-    result = [f"{prefix}{RESET}{wrapped_lines[0]}{RESET}" if wrapped_lines else f"{prefix}{text_color}{RESET}"]
-    result.extend([f"{subsequent_prefix}{RESET}{line}{RESET}" for line in wrapped_lines[1:]])
+    result = []
+    for i, content in enumerate(message.content):
+        wrapped_lines = []
+        if content.image and content.image.image:
+            wrapped_lines = plot_ascii(content.image.image, min(80, width - len(prefix)))
+        else:
+            if content.tool_result:
+                contnets_to_wrap = [ContentBlock(text=f"ToolResult(tool_call_id={content.tool_result.tool_call_id}):"), *content.tool_result.result]
+            else:
+                contnets_to_wrap = [content]
+
+            wrapped_lines = []
+            for c in contnets_to_wrap:
+                if c.image and c.image.image:
+                    block_wrapped_lines = plot_ascii(c.image.image, min(80, width - len(prefix)))
+                else:
+                    text = _content_to_text([c])  
+                    paragraphs = text.split('\n')
+                    wrapped_paragraphs = [textwrap.wrap(p, width=width - len(prefix)) for p in paragraphs]
+                    block_wrapped_lines = [line for paragraph in wrapped_paragraphs for line in paragraph]
+                wrapped_lines.extend(block_wrapped_lines)
+        if i == 0:
+            if wrapped_lines:
+                result.append(f"{prefix}{text_color}{wrapped_lines[0]}{RESET}")
+            else:
+                result.append(f"{prefix}{text_color}{RESET}")
+        else:
+            result.append(f"{subsequent_prefix}{text_color}{wrapped_lines[0]}{RESET}")
+        result.extend([f"{subsequent_prefix}{text_color}{line}{RESET}" for line in wrapped_lines[1:]])
     return result
 
 def print_wrapped_messages(messages: List[Message], max_role_length: int, color: str, wrap_width: Optional[int] = None):
@@ -102,11 +128,13 @@ def print_wrapped_messages(messages: List[Message], max_role_length: int, color:
 
     for i, message in enumerate(messages):
         role = message.role
-        text = message.text or "" # TODO: message repr
+        m = message.content[0]
+        
+        
         role_color = SYSTEM_COLOR if role == "system" else USER_COLOR if role == "user" else ASSISTANT_COLOR
         
         role_line = f"{prefix}{role_color}{role.rjust(max_role_length)}: {RESET}"
-        wrapped_lines = wrap_text_with_prefix(text, wrapping_width - len(role_prefix), '', subsequent_prefix, role_color)
+        wrapped_lines = wrap_text_with_prefix(message, wrapping_width - len(role_prefix), '', subsequent_prefix, role_color)
         
         print(f"{role_line}{wrapped_lines[0]}")
         for line in wrapped_lines[1:]:
@@ -115,17 +143,17 @@ def print_wrapped_messages(messages: List[Message], max_role_length: int, color:
         if i < len(messages) - 1:
             print(f"{PIPE_COLOR}│{RESET}")
 
+
 def model_usage_logger_pre(
     invoking_lmp: LMP,
     lmp_args: Tuple,
     lmp_kwargs: Dict,
     lmp_hash: str,
     messages: List[Message],
-    color: str = "",
     arg_max_length: int = 8
 ):
     """Log model usage before execution with customizable argument display length and ASCII box."""
-    color = color or compute_color(invoking_lmp)
+    color =  compute_color(invoking_lmp)
     formatted_args = [format_arg(arg, arg_max_length) for arg in lmp_args]
     formatted_kwargs = [format_kwarg(key, lmp_kwargs[key], arg_max_length) for key in lmp_kwargs]
     formatted_params = ', '.join(formatted_args + formatted_kwargs)
@@ -157,14 +185,14 @@ def model_usage_logger_post_start(color: str = "", n: int = 1):
 from contextlib import contextmanager
 
 @contextmanager
-def model_usage_logger_post_intermediate(color: str = "", n: int = 1):
+def model_usage_logger_post_intermediate( n: int = 1):
     """Context manager to log intermediate model output without wrapping, only indenting if necessary."""
     terminal_width = get_terminal_width()
     prefix = f"{PIPE_COLOR}│   "
     subsequent_prefix = f"{PIPE_COLOR}│   {' ' * (len('assistant: '))}"
     chars_printed = len(subsequent_prefix)
 
-    def log_stream_chunk(stream_chunk: str, is_refusal: bool = False):
+    def log_stream_chunk(stream_chunk: str , is_refusal: bool = False):
         nonlocal chars_printed
         if stream_chunk:
             lines = stream_chunk.split('\n')
